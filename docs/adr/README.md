@@ -20,3 +20,6 @@ meeting. Repository ADRs start at 0101 so they never collide with the source lis
 | [0302](0302-parser-fallback-and-chunking.md) | Parsing and chunking for M3 | Accepted for M3 (pending planning review) | ADR 0016 (Proposed), M1 parser report |
 | [0303](0303-eligible-id-retrieval.md) | Authorization inside retrieval (eligible point ids) | Accepted for M3 (pending planning review) | ADR 0004, 0012 (Proposed), completes 0104, T9 |
 | [0304](0304-citations-and-refusals.md) | Exact citations and indistinguishable refusals | Accepted for M3 (pending planning review) | §8 refusals, §9 citations, FR-03, FR-04, T10 |
+| [0401](0401-drive-sync-and-freshness.md) | Google Drive sync and permission freshness | Accepted for M4 (pending planning review) | FR-10, FR-02, roadmap M4 connector details |
+| [0402](0402-scoped-administration.md) | Scoped administration | Accepted for M4 (pending planning review) | ADR 0014 (Proposed), FR-11 |
+| [0403](0403-tenant-configuration.md) | Tenant configuration: packs and connectors | Accepted for M4 (pending planning review) | ADR 0010, FR-12 |

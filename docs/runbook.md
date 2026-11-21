@@ -1,4 +1,4 @@
-# Runbook — local development stack (M0–M3)
+# Runbook — local development stack (M0–M4)
 
 Prerequisites: Docker Engine with Compose v2, and Python 3 for the helper script. Node 20.19+ is needed only for local frontend work. No GPU, model endpoint or paid API key is needed.
 
@@ -101,6 +101,18 @@ MODEL_MODE=gateway LLM_BASE_URL=... MODEL_GATEWAY_TOKEN=... .venv/bin/python -m 
 ```
 
 Only the gateway run (BGE-M3) is a retrieval-quality result. See `ml/model-gateway/README.md` for running it in Colab next to Qdrant.
+
+## Drive sync, admin console and tenant configuration (M4)
+
+After pulling M4: `python scripts/dev.py up` (runs migration 0007), then `python scripts/dev.py seed` once. The seed adds the new admin capabilities and the tenant settings from `foundation.toml`. NileTech gets both packs, upload and Google Drive, and the 15-minute demo sync. The isolation tenant gets documents and upload only, with a nightly sync.
+
+- Admin console: sign in as `access.admin@niletech.example` (tenant-wide) or `finance.admin@niletech.example` (finance only). The Administration card shows Sources, Documents, Users, Roles & groups, Audit and Organization. Only tabs the caller's capabilities allow are shown; the backend enforces them regardless.
+- Google Drive needs operator credentials ([contracts/admin.md](contracts/admin.md#drive-connector-configuration-operator)). Put the JSON and any key file in `./var/connectors/`, set `DRIVE_CONNECTOR_CONFIG=/run/eaios/connectors/drive.json` in `.env`, and run `python scripts/dev.py up`. Without it, creating a source returns `drive_not_configured`.
+- The beat task `dispatch-due-connector-syncs` runs every minute; due sources sync every 15 minutes (demo) or nightly after 02:00 UTC. **Sync now** in the Sources tab runs one at once.
+- A Drive share maps to a tenant user only if the emails match exactly. For the live demo, add a reader whose email is a real Google account. The command copies `finance.reader`'s roles, groups and attributes:
+  `docker compose run --rm -v "$PWD/var:/app/var" migrate python -m app.cli add-drive-reader --email <google account>`
+- Live acceptance: `python3 scripts/m4_drive_acceptance.py --folder <folder id> --file-id <test file id> --reader <google account>`. It waits for the exact run each sync request created, exits nonzero on failure or timeout, and always writes evidence (see `docs/evidence/m4/README.md`).
+- Drive **group** shares grant access only with verified Google membership (`group_membership: "directory"`, Workspace only). Otherwise use direct user shares.
 
 ## Restart
 

@@ -34,6 +34,7 @@ from app.reporting.workflow import ReportWorkflow
 from app.repositories.audit import record_audit_event
 from app.security.context import AccessContext
 from app.security.policy import Decision, Reason
+from app.tenancy.config import RUN_KIND_PACK, load_settings, require_pack
 
 logger = logging.getLogger("eaios.reports")
 
@@ -213,10 +214,15 @@ class ReportService:
     def inference_mode(self) -> str:
         return self._settings.model_mode.value
 
+    def enabled_packs(self, ctx: AccessContext) -> frozenset[str]:
+        with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
+            return load_settings(conn).enabled_packs
+
     def create_run(
         self, ctx: AccessContext, question: str, client_request_id: str, kind: str = "report"
     ) -> store.RunRow:
         with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
+            require_pack(conn, RUN_KIND_PACK[kind])  # M4: backend-enforced tenant packs
             run, created = store.create_run(
                 conn,
                 tenant_id=ctx.tenant_id,

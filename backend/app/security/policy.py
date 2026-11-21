@@ -44,6 +44,10 @@ class Capability(StrEnum):
     RESOURCE_READ = "resource.read"
     RESOURCE_ADMIN = "resource.admin"
     DATASET_QUERY = "dataset.query"
+    # M4 scoped administration (never imply content read).
+    IDENTITY_ADMIN = "identity.admin"  # users, role assignments, group memberships
+    AUDIT_READ = "audit.read"  # audit activity
+    TENANT_CONFIG = "tenant.config"  # packs and connectors (tenant-wide only)
 
 
 # Capability required for each action.
@@ -206,6 +210,27 @@ def _grant_checks(
         else:
             has_allow = True
     return explicit_deny, has_allow, malformed
+
+
+def capability_scope(subject: Subject, capability: Capability) -> frozenset[str] | None:
+    """Departments covered by ``capability``: ``None`` means tenant-wide, an empty set
+    means the capability is not held. Inactive subjects hold nothing."""
+
+    if not subject.active:
+        return frozenset()
+    held = [c for c in subject.capabilities if c.capability == capability.value]
+    if any(c.scope_department is None for c in held):
+        return None
+    return frozenset(c.scope_department for c in held if c.scope_department is not None)
+
+
+def covers(subject: Subject, capability: Capability, department: str | None) -> bool:
+    """Whether ``capability`` applies to ``department`` (``None``: tenant-wide only)."""
+
+    scope = capability_scope(subject, capability)
+    if scope is None:
+        return True
+    return department is not None and department in scope
 
 
 def evaluate(subject: Subject, action: str, resource: ResourceMeta) -> Decision:

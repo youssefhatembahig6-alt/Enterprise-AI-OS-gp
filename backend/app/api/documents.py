@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Request, status
 from fastapi.responses import Response
 
+from app.api.admin import capability_disabled
 from app.api.deps import CurrentContext
 from app.api.errors import ApiError
 from app.documents.ingest import (
@@ -24,6 +25,7 @@ from app.documents.ingest import (
 from app.reporting.service import ReportService, RunNotFound
 from app.schemas.auth import ErrorResponse
 from app.schemas.documents import CitationOut, PermissionsIn, UploadIn, UploadOut, VersionIn
+from app.tenancy.config import CapabilityDisabled
 
 router = APIRouter(prefix="/api/v1", tags=["documents"])
 _ERRORS: dict[int | str, dict[str, Any]] = {
@@ -67,6 +69,8 @@ def _spec(p: PermissionsIn) -> PermissionSpec:
 
 
 def _errors(exc: Exception) -> ApiError:
+    if isinstance(exc, CapabilityDisabled):
+        return capability_disabled(exc)
     if isinstance(exc, DocumentNotFound):
         return ApiError(404, "not_found", "Not found.")
     if isinstance(exc, DocumentForbidden):
@@ -93,7 +97,7 @@ def upload(body: UploadIn, ctx: CurrentContext, docs: Documents) -> UploadOut:
             permissions=_spec(body.permissions) if body.permissions else None,
             title=body.title,
         )
-    except (DocumentNotFound, DocumentForbidden, InvalidRequest) as exc:
+    except (DocumentNotFound, DocumentForbidden, InvalidRequest, CapabilityDisabled) as exc:
         raise _errors(exc) from exc
     return UploadOut(document_id=str(document_id), status="queued")
 
@@ -125,7 +129,7 @@ def set_permissions(
 ) -> Response:
     try:
         docs.set_permissions(ctx, document_id, _spec(body))
-    except (DocumentNotFound, DocumentForbidden, InvalidRequest) as exc:
+    except (DocumentNotFound, DocumentForbidden, InvalidRequest, CapabilityDisabled) as exc:
         raise _errors(exc) from exc
     return Response(status_code=204)
 
@@ -138,7 +142,7 @@ def new_version(
         version = docs.new_version(
             ctx, document_id, filename=body.filename, data=_decode(body.content_base64)
         )
-    except (DocumentNotFound, DocumentForbidden, InvalidRequest) as exc:
+    except (DocumentNotFound, DocumentForbidden, InvalidRequest, CapabilityDisabled) as exc:
         raise _errors(exc) from exc
     return {"document_id": str(document_id), "version": version, "status": "queued"}
 
@@ -158,7 +162,7 @@ def reindex(document_id: UUID, ctx: CurrentContext, docs: Documents) -> dict[str
 def delete_document(document_id: UUID, ctx: CurrentContext, docs: Documents) -> Response:
     try:
         docs.delete(ctx, document_id)
-    except (DocumentNotFound, DocumentForbidden) as exc:
+    except (DocumentNotFound, DocumentForbidden, InvalidRequest) as exc:
         raise _errors(exc) from exc
     return Response(status_code=204)
 

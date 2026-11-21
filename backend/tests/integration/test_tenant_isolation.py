@@ -10,7 +10,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
 
 from app.db.engine import contextless_transaction, tenant_transaction
-from tests.integration.conftest import DbHarness
+from tests.integration.conftest import DbHarness, owner_exec
 
 TENANT_TABLES = (
     "users",
@@ -22,6 +22,8 @@ TENANT_TABLES = (
     "resources",
     "resource_grants",
     "sessions",
+    # M4 (connector tables are covered with real rows in test_m4_drive_sync.py)
+    "tenant_settings",
 )
 
 
@@ -104,10 +106,25 @@ def test_password_hash_not_readable_by_app_role(test_db: DbHarness, app_engine: 
         conn.execute(text("SELECT password_hash FROM users"))
 
 
-def test_audit_events_not_readable_by_app_role(test_db: DbHarness, app_engine: Engine) -> None:
-    tenant_a, _ = tenant_ids(test_db)
-    with pytest.raises(ProgrammingError), tenant_transaction(app_engine, tenant_a) as conn:
-        conn.execute(text("SELECT count(*) FROM audit_events"))
+def test_audit_events_readable_only_inside_own_tenant(
+    test_db: DbHarness, app_engine: Engine
+) -> None:
+    """M4 opened audit reading for the scoped admin console (ADR 0402): the app role
+    sees its own tenant's rows only, and none without a tenant context."""
+
+    tenant_a, tenant_b = tenant_ids(test_db)
+    for tid in (tenant_a, tenant_b):
+        owner_exec(
+            test_db,
+            "INSERT INTO audit_events (tenant_id, event_type, action, decision, reason)"
+            " VALUES (:t, 'test.marker', 'test', 'info', 'm4')",
+            {"t": tid},
+        )
+    with tenant_transaction(app_engine, tenant_a) as conn:
+        seen = set(conn.execute(text("SELECT DISTINCT tenant_id FROM audit_events")).scalars())
+    assert seen == {tenant_a}
+    with contextless_transaction(app_engine) as conn:
+        assert conn.execute(text("SELECT count(*) FROM audit_events")).scalar_one() == 0
 
 
 def test_cannot_insert_row_for_other_tenant(test_db: DbHarness, app_engine: Engine) -> None:

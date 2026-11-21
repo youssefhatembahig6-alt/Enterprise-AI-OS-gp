@@ -6,7 +6,7 @@ M0 implements FR-01 and the foundations of FR-02 and FR-11, plus NFR-01, NFR-03 
 | --- | --- | --- |
 | FR-01 Identity | Login, Argon2id, JWT validation, per-request server-built context, logout, deactivation, rate limit | `tests/integration/test_auth_api.py`, `tests/unit/test_tokens_and_redaction.py`, `scripts/smoke_stack.py` |
 | FR-02 Filtered retrieval (foundation) | Reference five-layer evaluator, declarative fixtures, DB-backed decisions; retrieval design only | `tests/unit/test_policy_evaluator.py`, `tests/unit/test_policy_fixtures.py`, `tests/integration/test_authorization_db.py`, ADR 0103/0104 |
-| FR-11 Audit (foundation) | `audit_events` for login allow/deny/rate-limit, token rejection, logout and authorization decisions; app role insert-only | `test_auth_api.py::test_audit_events_and_no_secret_leakage`, `test_authorization_db.py::test_authorization_decisions_are_audited`, `test_tenant_isolation.py::test_audit_events_not_readable_by_app_role` |
+| FR-11 Audit (foundation) | `audit_events` for login allow/deny/rate-limit, token rejection, logout and authorization decisions; app role insert-only | `test_auth_api.py::test_audit_events_and_no_secret_leakage`, `test_authorization_db.py::test_authorization_decisions_are_audited`, `test_tenant_isolation.py::test_audit_events_readable_only_inside_own_tenant` (M4 opened tenant-scoped reads for the admin console) |
 | NFR-01 Isolation (foundation) | RLS on every tenant table for a non-owner role, composite cross-tenant FKs, transaction-scoped context, pool cleanup | `tests/integration/test_tenant_isolation.py` |
 | NFR-03 Compose | One `docker compose up --build`, health-gated, named volumes, restart persistence | `compose.yaml`, runbook, PR acceptance log |
 | NFR-05 Secrets | Secrets only in `.env`/env, `SecretStr`, log redaction, no tokens in browser storage, no secrets in logs or responses | `test_auth_api.py::test_audit_events_and_no_secret_leakage`, `test_health.py`, `test_tokens_and_redaction.py`, ESLint storage rule |
@@ -74,3 +74,15 @@ Integration tests run on real PostgreSQL 17.6 and real Qdrant 1.15.4 with labell
 | T8 | **M3:** no answer cache exists; repeated questions after revocation are re-authorized and re-searched (`::test_t8_*`). |
 | T9 | **M3:** asserted on the captured outbound Qdrant request for dense and hybrid modes; no request when nothing is eligible (`::test_t9_*`). |
 | T10 | **M3:** restricted vs removed document, 30 interleaved runs each: identical normalized responses; median difference 3.4% in the latest run (`::test_t10_*`). |
+
+## M4 — Drive sync, scoped administration, tenant configuration
+
+| Requirement | Implementation | Evidence |
+| --- | --- | --- |
+| FR-10 Connectors (Google Drive) | Folder sources, full ACL re-read per sync, fingerprint-incremental content, moves, removals, sharing changes; group shares only with verified Google membership; stale runs fenced; allowlist rechecked per sync; fail closed on listing/ACL failure and staleness ([ADR 0401](adr/0401-drive-sync-and-freshness.md)) | `test_m4_drive_sync.py` (Drive **double**), `test_drive_client.py` (HTTP client vs mocked API). **Live Drive run: open** — see `docs/evidence/m4/README.md` |
+| FR-02 Filtered retrieval (connector freshness) | `permissions_current` computed in `load_resource_meta(s)` from source state, connector switch and staleness | `test_m4_drive_sync.py::test_failed_sync_…`, `::test_stale_verification_…`, `::test_paused_source_and_disabled_connector_…` |
+| FR-11 Audit (scoped reads) | `audit.read` scope; admin changes audited in-transaction; no content in audit | `test_m4_admin.py::test_audit_activity_is_scoped`, `::test_admin_changes_are_audited` |
+| FR-12 Configuration | `tenant_settings`; two fixture tenants with different packs, connectors and schedules; enforcement at API, run start and publication ([ADR 0403](adr/0403-tenant-configuration.md)) | `test_m4_tenant_config.py` |
+| Admin scope (ADR 0014) | Department vs tenant-wide `resource.admin`/`identity.admin`/`audit.read`; no escalation; 404 outside scope; no self-lockout through assignments or role definitions ([ADR 0402](adr/0402-scoped-administration.md)) | `test_m4_admin.py` |
+| Revocation semantics | Admin removals (deactivate, group, role, clearance) apply on the next request, before publication of an active run, and on citation reopen/replay; Drive unsharing applies after the next sync | `test_m4_admin.py::test_removal_*`, `test_m4_drive_sync.py::test_revoked_sharing_applies_after_the_next_sync` |
+| NFR-07 UI | Admin console (Sources with last verified sync, Documents, Users, Roles & groups, Audit, Organization); menus follow tenant packs | `apps/web/src/AdminPanel.tsx`; lint/typecheck/build. Not exercised in a browser in this PR |

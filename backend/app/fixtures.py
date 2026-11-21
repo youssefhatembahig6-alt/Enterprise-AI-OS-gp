@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import tomllib
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +113,8 @@ class TenantFx:
     users: dict[str, UserFx] = field(default_factory=dict)
     resources: dict[str, ResourceFx] = field(default_factory=dict)
     report_profiles: dict[str, ReportProfileFx] = field(default_factory=dict)
+    # M4 tenant configuration (None: the tenant has nothing enabled).
+    settings: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,22 @@ def _parse_tenant(raw: dict[str, Any]) -> TenantFx:
             department_restricted=bool(res["department_restricted"]),
             allowed_countries=countries,
             grants=tuple(grants),
+        )
+    if (settings := raw.get("settings")) is not None:
+        from app.tenancy.config import CONNECTORS, PACKS, SYNC_MODES  # noqa: PLC0415
+
+        packs = list(settings.get("enabled_packs", []))
+        connectors = list(settings.get("enabled_connectors", []))
+        _require(set(packs) <= set(PACKS), f"{slug}: unknown pack in settings")
+        _require(set(connectors) <= set(CONNECTORS), f"{slug}: unknown connector in settings")
+        _require(settings.get("sync_mode", "nightly") in SYNC_MODES, f"{slug}: bad sync_mode")
+        tenant = replace(
+            tenant,
+            settings={
+                "enabled_packs": sorted(packs),
+                "enabled_connectors": sorted(connectors),
+                "sync_mode": settings.get("sync_mode", "nightly"),
+            },
         )
     for prof in raw.get("report_profiles", []):
         _require(

@@ -53,6 +53,7 @@ from app.reporting.contracts import (
 from app.reporting.model_client import FAKE_LABEL, InferenceCancelled, ModelError
 from app.reporting.prompts import MalformedOutput, _json_object
 from app.reporting.workflow import ReportWorkflow, RunState, WorkflowDeps
+from app.tenancy.config import pack_enabled
 
 ANSWER_MAX_TOKENS = 400
 MAX_QUOTE_CHARS = 400
@@ -312,6 +313,8 @@ class DocumentAnswerWorkflow(ReportWorkflow):
             if run is None or run.status in TERMINAL_STATUSES:
                 return {"terminal": {"kind": "noop"}}
             runs.update_run(conn, run.id, status=RunStatus.RUNNING)
+            if not pack_enabled(conn, "documents"):
+                return {"terminal": self._disabled("start")}
         self._status(state, Step.AUTHORIZATION, "completed")
         stats = self._stats_for(state)
         stats["model"] = self.deps.model.describe()
@@ -617,6 +620,8 @@ class DocumentAnswerWorkflow(ReportWorkflow):
                 return {"terminal": {"kind": "noop"}}
             if run.cancel_requested:
                 return {"terminal": {"kind": "cancel", "code": ErrorCode.CANCELLED}}
+            if not pack_enabled(conn, "documents"):
+                return {"terminal": self._disabled("publication")}
             locked = store.lock_documents(conn, doc_ids)
             for citation in cited.values():
                 doc = locked.get(UUID(citation["document_id"]))

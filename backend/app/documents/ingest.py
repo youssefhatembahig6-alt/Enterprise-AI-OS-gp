@@ -49,6 +49,7 @@ from app.reporting.model_client import (
 )
 from app.repositories.audit import record_audit_event
 from app.security.context import AccessContext
+from app.tenancy.config import require_connector
 
 logger = logging.getLogger("eaios.documents")
 POINT_NAMESPACE = uuid.UUID("2b6f0c1e-7d4a-4f53-9a0e-5c1d2e3f4a5b")
@@ -165,6 +166,8 @@ class DocumentService:
     ) -> UUID:
         if not access.can_administer(ctx.subject, ctx.tenant_id, department).allowed:
             raise DocumentForbidden
+        with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
+            require_connector(conn, "upload")  # M4: backend-enforced tenant configuration
         try:
             detected = detect(filename, data)
         except ParseFailed as exc:
@@ -223,7 +226,8 @@ class DocumentService:
         self, ctx: AccessContext, document_id: UUID, *, filename: str, data: bytes
     ) -> int:
         with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
-            self._require_admin(conn, ctx, document_id)
+            self._require_admin(conn, ctx, document_id, manual=True)
+            require_connector(conn, "upload")
         try:
             detected = detect(filename, data)
         except ParseFailed as exc:
@@ -264,7 +268,9 @@ class DocumentService:
             self._dispatch(job_id, ctx.tenant_id)
         return version
 
-    def _require_admin(self, conn: Any, ctx: AccessContext, document_id: UUID) -> store.DocumentRow:
+    def _require_admin(
+        self, conn: Any, ctx: AccessContext, document_id: UUID, *, manual: bool = False
+    ) -> store.DocumentRow:
         doc = store.load_document(conn, document_id)
         if doc is None or doc.deleted_at is not None:
             raise DocumentNotFound
@@ -272,11 +278,17 @@ class DocumentService:
             if access.can_read(conn, ctx.user_id, document_id).allowed:
                 raise DocumentForbidden
             raise DocumentNotFound
+        if manual and doc.source == "google_drive":
+            # Sharing, versions and removal of a synced document come from Drive.
+            raise InvalidRequest(
+                "managed_by_connector",
+                "This document is synced from Google Drive; change it in Drive and sync.",
+            )
         return doc
 
     def set_permissions(self, ctx: AccessContext, document_id: UUID, spec: PermissionSpec) -> None:
         with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
-            doc = self._require_admin(conn, ctx, document_id)
+            doc = self._require_admin(conn, ctx, document_id, manual=True)
             perms = self._resolve(conn, spec, doc.department)
             store.set_permissions(conn, ctx.tenant_id, document_id, perms)
             record_audit_event(
@@ -294,7 +306,7 @@ class DocumentService:
 
     def delete(self, ctx: AccessContext, document_id: UUID) -> None:
         with tenant_transaction(self._engine, ctx.tenant_id, ctx.user_id) as conn:
-            self._require_admin(conn, ctx, document_id)
+            self._require_admin(conn, ctx, document_id, manual=True)
             store.delete_document(conn, document_id)
             record_audit_event(
                 conn,

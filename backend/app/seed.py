@@ -173,6 +173,34 @@ def _seed_tenant(
                     },
                 ),
             )
+    if tenant.settings is not None:
+        # Upsert: migration 0007 gives existing tenants a default row; the fixture wins.
+        result.bump(
+            "tenant_settings",
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO tenant_settings (tenant_id, enabled_packs, enabled_connectors,
+                                                 sync_mode)
+                    VALUES (:t, :packs, :conns, :mode)
+                    ON CONFLICT (tenant_id) DO UPDATE SET
+                        enabled_packs = EXCLUDED.enabled_packs,
+                        enabled_connectors = EXCLUDED.enabled_connectors,
+                        sync_mode = EXCLUDED.sync_mode
+                    WHERE (tenant_settings.enabled_packs, tenant_settings.enabled_connectors,
+                           tenant_settings.sync_mode)
+                          IS DISTINCT FROM (EXCLUDED.enabled_packs,
+                                            EXCLUDED.enabled_connectors, EXCLUDED.sync_mode)
+                    """
+                ),
+                {
+                    "t": tenant.id,
+                    "packs": tenant.settings["enabled_packs"],
+                    "conns": tenant.settings["enabled_connectors"],
+                    "mode": tenant.settings["sync_mode"],
+                },
+            ).rowcount,
+        )
     for profile in tenant.report_profiles.values():
         result.bump(
             "tenant_report_profiles",

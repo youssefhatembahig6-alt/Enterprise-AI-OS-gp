@@ -60,7 +60,11 @@ def test_login_and_identity_are_server_derived(client: TestClient, test_db: DbHa
 def test_scoped_admin_identity(client: TestClient, test_db: DbHarness) -> None:
     token = login(client, test_db, "niletech/finance-admin")
     body = client.get("/api/v1/me", headers=auth(token)).json()
-    assert body["capabilities"] == [{"capability": "resource.admin", "scope_department": "finance"}]
+    assert body["capabilities"] == [
+        {"capability": "audit.read", "scope_department": "finance"},
+        {"capability": "identity.admin", "scope_department": "finance"},
+        {"capability": "resource.admin", "scope_department": "finance"},
+    ]
 
 
 def test_second_tenant_user_sees_only_own_tenant(client: TestClient, test_db: DbHarness) -> None:

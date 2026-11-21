@@ -155,6 +155,13 @@ class Settings(BaseSettings):
         default=3, alias="INGESTION_JOB_MAX_ATTEMPTS", ge=1, le=10
     )
 
+    # M4 Google Drive connector: operator-owned JSON binding each tenant slug to its
+    # server-side credentials and allowed root folders (app/connectors/drive.py).
+    drive_connector_config: str | None = Field(default=None, alias="DRIVE_CONNECTOR_CONFIG")
+    drive_sync_lease_seconds: int = Field(
+        default=900, alias="DRIVE_SYNC_LEASE_SECONDS", ge=60, le=7200
+    )
+
     sse_poll_interval_seconds: float = Field(
         default=0.5, alias="SSE_POLL_INTERVAL_SECONDS", gt=0, le=5
     )

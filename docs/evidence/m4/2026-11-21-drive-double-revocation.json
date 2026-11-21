@@ -1,0 +1,70 @@
+{
+  "answer_after": {
+    "abstention": {
+      "code": "no_sources",
+      "message": "I couldn't find information in documents you can access that answers this."
+    },
+    "outcome": "abstained"
+  },
+  "answer_before": {
+    "citation": {
+      "char_end": 94,
+      "char_start": 26,
+      "citation_id": "c1",
+      "document_id": "16a78990-710b-45a3-b406-3dfb4b42cff1",
+      "heading_path": [
+        "Travel policy",
+        "Allowance"
+      ],
+      "page": null,
+      "quote": "The daily meal allowance for international travel is 60 USD per day.",
+      "run_id": "00ed0076-bfa1-4be0-9350-064ce1c33348",
+      "text_sha256": "41e9405be76e09c1bca08562388881757a2a06e84a4c4b6f758aab971cd3934b",
+      "title": "travel-policy",
+      "version": 1
+    },
+    "outcome": "published"
+  },
+  "citation_after_status": 404,
+  "citation_before_status": 200,
+  "drive": "in-memory test double (tests/integration/drive_support.py)",
+  "inference": "fake",
+  "replay_after_errors": [
+    {
+      "code": "access_revoked",
+      "message": "Your access changed during this request, so nothing is shown."
+    }
+  ],
+  "sync_1": {
+    "access": "current",
+    "last_verified_sync_at": "2026-11-21T14:41:36.148874+00:00",
+    "run": {
+      "error_code": null,
+      "finished_at": "2026-11-21T14:41:36.178536+00:00",
+      "run_id": "fee8b700-170e-4e8d-b44f-e1989eb0acaa",
+      "started_at": "2026-11-21T14:41:36.148874+00:00",
+      "stats": {
+        "created": 1,
+        "seen": 1
+      },
+      "status": "succeeded",
+      "trigger": "manual"
+    }
+  },
+  "sync_2": {
+    "access": "current",
+    "last_verified_sync_at": "2026-11-21T14:41:37.500801+00:00",
+    "run": {
+      "error_code": null,
+      "finished_at": "2026-11-21T14:41:37.520237+00:00",
+      "run_id": "a4562540-f6b2-4723-b912-ba806d31dcbd",
+      "started_at": "2026-11-21T14:41:37.500801+00:00",
+      "stats": {
+        "permissions_changed": 1,
+        "seen": 1
+      },
+      "status": "succeeded",
+      "trigger": "manual"
+    }
+  }
+}

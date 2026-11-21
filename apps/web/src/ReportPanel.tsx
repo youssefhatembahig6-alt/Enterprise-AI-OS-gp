@@ -315,7 +315,10 @@ function DocumentCitationPanel({
   );
 }
 
-export function ReportPanel({ token }: { token: string }) {
+export function ReportPanel({ token, packs }: { token: string; packs: string[] | null }) {
+  // Menus follow the tenant's packs; the backend refuses disabled packs regardless.
+  const docsOn = packs === null || packs.includes("documents");
+  const reportsOn = packs === null || packs.includes("sales_reports");
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState<AskMode>("auto");
   const [view, setView] = useState<RunView>(EMPTY);
@@ -420,8 +423,8 @@ export function ReportPanel({ token }: { token: string }) {
               onChange={(e) => setMode(e.target.value as AskMode)}
             >
               <option value="auto">Automatic</option>
-              <option value="documents">Documents you can access</option>
-              <option value="report">Sales report (SQL)</option>
+              {docsOn ? <option value="documents">Documents you can access</option> : null}
+              {reportsOn ? <option value="report">Sales report (SQL)</option> : null}
             </select>
           </div>
           <label htmlFor="question" className="text-sm font-medium">

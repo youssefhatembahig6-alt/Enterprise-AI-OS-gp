@@ -207,6 +207,9 @@ class ErrorCode(StrEnum):
     ACCESS_REVOKED = "access_revoked"
     CANCELLED = "cancelled"
     INTERNAL = "internal_error"
+    # M4: the tenant switched off the pack this run needs (checked at start and at
+    # publication, so a run started before the change publishes nothing).
+    CAPABILITY_DISABLED = "capability_disabled"
 
 
 ERROR_MESSAGES: dict[ErrorCode, str] = {
@@ -215,6 +218,7 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.ACCESS_REVOKED: "Your access changed during this request, so nothing is shown.",
     ErrorCode.CANCELLED: "The request was cancelled.",
     ErrorCode.INTERNAL: "The request failed.",
+    ErrorCode.CAPABILITY_DISABLED: "This capability is not enabled for your organization.",
 }
 
 

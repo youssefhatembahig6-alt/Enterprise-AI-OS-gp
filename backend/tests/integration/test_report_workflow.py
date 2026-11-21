@@ -25,7 +25,7 @@ from app.reporting.model_client import (
     ScriptStep,
 )
 from app.reporting.workflow import RunState
-from tests.integration.conftest import DbHarness, owner_exec, report_settings
+from tests.integration.conftest import DbHarness, owner_exec, report_settings, tenant_packs
 from tests.integration.report_support import (
     NILETECH_Q1,
     Stream,
@@ -421,7 +421,10 @@ def test_denied_and_isolated_users_get_the_same_abstention(
 ) -> None:
     fake = FakeModelClient()
     client = make_client(fake)
-    stream = ask(client, token_for(client, report_db, ref), Q1_QUESTION)
+    # M4: the second tenant has no sales_reports pack; enable it here so this test still
+    # proves the cross-tenant dataset boundary rather than the tenant configuration.
+    with tenant_packs(report_db, ref.split("/")[0], ["documents", "sales_reports"]):
+        stream = ask(client, token_for(client, report_db, ref), Q1_QUESTION)
     assert stream.done["outcome"] == "abstained"
     assert stream.done["abstention"] == {
         "code": "no_accessible_data",
@@ -439,7 +442,10 @@ def test_isolation_boundary_case_abstains_even_when_authorized(
 ) -> None:
     case = CASES["cases"][1]
     client = make_client(FakeModelClient())
-    stream = ask(client, token_for(client, report_db, case["asking_identity"]), case["question"])
+    slug = case["asking_identity"].split("/")[0]
+    with tenant_packs(report_db, slug, ["documents", "sales_reports"]):  # M4: see above
+        token = token_for(client, report_db, case["asking_identity"])
+        stream = ask(client, token, case["question"])
     assert stream.done["outcome"] == case["expected_kind"].replace("abstention", "abstained")
     stats = owner_exec(
         report_db, "SELECT stats FROM report_runs WHERE id = :id", {"id": stream.run_id}

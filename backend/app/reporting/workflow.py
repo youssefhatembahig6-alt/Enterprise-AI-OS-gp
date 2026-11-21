@@ -78,6 +78,7 @@ from app.reporting.router import route
 from app.reporting.semantics import QuerySemantics, SemanticVerifier, check_probe
 from app.reporting.sql_guard import SqlRejected, ValidatedSql, validate_sql
 from app.repositories.audit import record_audit_event
+from app.tenancy.config import pack_enabled
 
 logger = logging.getLogger("eaios.reports")
 
@@ -310,6 +311,8 @@ class ReportWorkflow:
             if run is None or run.status in TERMINAL_STATUSES:
                 return {"terminal": {"kind": "noop"}}
             store.update_run(conn, run.id, status=RunStatus.RUNNING)
+            if not pack_enabled(conn, "report"):
+                return {"terminal": self._disabled("start")}
             profile = store.load_profile(conn, SUPPORTED_REPORT)
             if profile is None:
                 return {"terminal": self._abstain(AbstentionCode.NO_ACCESSIBLE_DATA, "no_profile")}
@@ -654,6 +657,10 @@ class ReportWorkflow:
     def _revoked(private: str, stage: str) -> Terminal:
         return {"kind": "fail", "code": ErrorCode.ACCESS_REVOKED, "private": f"{stage}:{private}"}
 
+    @staticmethod
+    def _disabled(stage: str) -> Terminal:
+        return {"kind": "fail", "code": ErrorCode.CAPABILITY_DISABLED, "private": f"{stage}:pack"}
+
     def _build_result(
         self, state: RunState, message_id: UUID
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -776,6 +783,8 @@ class ReportWorkflow:
                 return {"terminal": {"kind": "noop"}}
             if run.cancel_requested:
                 return {"terminal": {"kind": "cancel", "code": ErrorCode.CANCELLED}}
+            if not pack_enabled(conn, "report"):
+                return {"terminal": self._disabled("publication")}
             decision = authorize_dataset(conn, state["user_id"], state["profile"].resource_id)
             self._audit(
                 conn,

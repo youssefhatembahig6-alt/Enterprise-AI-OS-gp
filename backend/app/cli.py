@@ -259,6 +259,75 @@ def cmd_relevance_study(args: argparse.Namespace) -> None:
     print(f"relevance-study: wrote {out} (inference_mode={record['inference_mode']})")
 
 
+def cmd_add_drive_reader(args: argparse.Namespace) -> None:
+    """Development only (M4 live Drive demo): add a tenant user whose email is a real
+    Google account, copying attributes, roles and groups from an existing user, so a
+    Drive share to that account maps to a tenant user. The password goes to the
+    owner-only credentials file, never to stdout."""
+
+    import secrets
+
+    from sqlalchemy import text
+
+    from app.security.passwords import hash_password
+    from app.seed import write_credentials
+
+    if os.environ.get("EAIOS_ENV", "development") not in ("development", "test"):
+        sys.exit("refused: development only")
+    email = args.email.strip().lower()
+    password = secrets.token_urlsafe(18)
+    engine = create_engine(_owner_url(), poolclass=pool.NullPool)
+    try:
+        with engine.begin() as conn:
+            like = conn.execute(
+                text(
+                    "SELECT u.* FROM users u JOIN tenants t ON t.id = u.tenant_id"
+                    " WHERE t.slug = :slug AND u.email = :like"
+                ),
+                {"slug": args.tenant, "like": args.like.lower()},
+            ).one_or_none()
+            if like is None:
+                sys.exit("refused: --like user not found in that tenant")
+            new_id = conn.execute(
+                text(
+                    "INSERT INTO users (tenant_id, email, display_name, password_hash, status,"
+                    " clearance, country, department) VALUES (:t, :e, :n, :h, 'active', :c,"
+                    " :co, :d) ON CONFLICT (tenant_id, email) DO NOTHING RETURNING id"
+                ),
+                {
+                    "t": like.tenant_id,
+                    "e": email,
+                    "n": args.display_name,
+                    "h": hash_password(password),
+                    "c": like.clearance,
+                    "co": like.country,
+                    "d": like.department,
+                },
+            ).scalar()
+            if new_id is None:
+                print("add-drive-reader: user already exists; nothing changed")
+                return
+            conn.execute(
+                text(
+                    "INSERT INTO user_roles (tenant_id, user_id, role_id, scope_department)"
+                    " SELECT tenant_id, :new, role_id, scope_department FROM user_roles"
+                    " WHERE user_id = :like"
+                ),
+                {"new": new_id, "like": like.id},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO group_memberships (tenant_id, group_id, user_id)"
+                    " SELECT tenant_id, group_id, :new FROM group_memberships WHERE user_id = :like"
+                ),
+                {"new": new_id, "like": like.id},
+            )
+    finally:
+        engine.dispose()
+    write_credentials(Path(args.credentials_file), {args.tenant: {email: password}})
+    print(f"add-drive-reader: added {email}; password written to {args.credentials_file}")
+
+
 def cmd_export_openapi(args: argparse.Namespace) -> None:
     from app.config import Settings
     from app.main import create_app
@@ -319,6 +388,15 @@ def main(argv: list[str] | None = None) -> None:
     parsed.add_argument("--out", default=str(BACKEND_ROOT.parent / "var" / "parser-export.json"))
     parsed.set_defaults(func=cmd_parser_export)
 
+    reader = sub.add_parser("add-drive-reader", help="dev: tenant user for the live Drive demo")
+    reader.add_argument("--tenant", default="niletech")
+    reader.add_argument("--email", required=True, help="the Google account shared in Drive")
+    reader.add_argument("--like", default="finance.reader@niletech.example")
+    reader.add_argument("--display-name", default="Drive demo reader")
+    reader.add_argument(
+        "--credentials-file", default=str(BACKEND_ROOT / "var/dev-credentials.json")
+    )
+    reader.set_defaults(func=cmd_add_drive_reader)
     export = sub.add_parser("export-openapi", help="write the OpenAPI schema")
     export.add_argument("--output", default=str(BACKEND_ROOT.parent / "docs/openapi.json"))
     export.set_defaults(func=cmd_export_openapi)

@@ -14,12 +14,14 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.api.admin import capability_disabled
 from app.api.deps import CurrentContext
 from app.api.errors import ApiError, unauthenticated
 from app.reporting.router import _TOPIC, _YEAR_ONLY, extract_periods
 from app.reporting.service import ReportService, RunNotFound
 from app.schemas.auth import ErrorResponse
 from app.schemas.reports import ChatRequest, EvidenceOut, RunOut
+from app.tenancy.config import RUN_KIND_PACK, CapabilityDisabled
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 _bearer = HTTPBearer(auto_error=False)
@@ -41,17 +43,28 @@ _SSE_DOC: dict[int | str, dict[str, Any]] = {
 }
 
 
-def choose_kind(question: str, mode: str) -> str:
+def choose_kind(question: str, mode: str, enabled: frozenset[str] | None = None) -> str:
     """``auto`` keeps M2 behaviour for anything that looks like a sales/period request
-    (topic word, quarter, month or year) and sends the rest to document answers."""
+    (topic word, quarter, month or year) and sends the rest to document answers.
+
+    M4: only packs the tenant enabled are routable. An explicit mode for a disabled
+    pack raises ``CapabilityDisabled``; ``auto`` falls back to the enabled pack."""
 
     if mode == "report":
-        return "report"
-    if mode == "documents":
-        return "documents"
-    if _TOPIC.search(question) or extract_periods(question) or _YEAR_ONLY.search(question):
-        return "report"
-    return "documents"
+        kind = "report"
+    elif mode == "documents":
+        kind = "documents"
+    elif _TOPIC.search(question) or extract_periods(question) or _YEAR_ONLY.search(question):
+        kind = "report"
+    else:
+        kind = "documents"
+    if enabled is None or RUN_KIND_PACK[kind] in enabled:
+        return kind
+    if mode == "auto":
+        for other in ("documents", "report"):
+            if RUN_KIND_PACK[other] in enabled:
+                return other
+    raise CapabilityDisabled("pack", RUN_KIND_PACK[kind])
 
 
 def get_report_service(request: Request) -> ReportService:
@@ -89,12 +102,15 @@ def chat(
 
     _require_available(service)
     token = _token(credentials)
-    run = service.create_run(
-        ctx,
-        body.question.strip(),
-        body.client_request_id or secrets.token_urlsafe(16),
-        choose_kind(body.question, body.mode),
-    )
+    try:
+        run = service.create_run(
+            ctx,
+            body.question.strip(),
+            body.client_request_id or secrets.token_urlsafe(16),
+            choose_kind(body.question, body.mode, service.enabled_packs(ctx)),
+        )
+    except CapabilityDisabled as exc:
+        raise capability_disabled(exc) from exc
     return StreamingResponse(
         service.stream(token, ctx, run.id, 0),
         media_type="text/event-stream",

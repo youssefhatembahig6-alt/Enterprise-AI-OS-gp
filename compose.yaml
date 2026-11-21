@@ -1,4 +1,4 @@
-# Enterprise AI OS — development stack (M0 foundation, M2 verified SQL reports).
+# Enterprise AI OS — development stack (M0 foundation, M2 reports, M3 documents, M4 Drive/admin).
 #   docker compose up --build        (see docs/runbook.md)
 # Only the API (8000) and frontend (3000) are published, bound to 127.0.0.1.
 # Data services are reachable only on the internal network. No model service
@@ -32,6 +32,9 @@ x-backend-env: &backend-env
   RELEVANCE_FILTER: ${RELEVANCE_FILTER:-lexical}
   RELEVANCE_MIN_SCORE: ${RELEVANCE_MIN_SCORE:-0.0}
   USE_DOCLING: ${USE_DOCLING:-true}
+  # M4 Google Drive: operator-owned JSON (credentials + allowed folders per tenant),
+  # e.g. /run/eaios/connectors/drive.json from ./var/connectors (git-ignored).
+  DRIVE_CONNECTOR_CONFIG: ${DRIVE_CONNECTOR_CONFIG:-}
   PASSWORD_VERIFY_CONCURRENCY: ${PASSWORD_VERIFY_CONCURRENCY:-2}
   PASSWORD_VERIFY_QUEUE_TIMEOUT_SECONDS: ${PASSWORD_VERIFY_QUEUE_TIMEOUT_SECONDS:-5}
 
@@ -104,7 +107,7 @@ services:
     build:
       context: ./backend
       target: runtime
-    image: eaios-backend:m3
+    image: eaios-backend:m4
     command: ["python", "-m", "app.cli", "migrate"]
     environment:
       EAIOS_ENV: ${EAIOS_ENV:-development}
@@ -118,11 +121,13 @@ services:
     restart: "no"
 
   api:
-    image: eaios-backend:m3
+    image: eaios-backend:m4
     build:
       context: ./backend
       target: runtime
     environment: *backend-env
+    volumes:
+      - ./var/connectors:/run/eaios/connectors:ro
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -143,9 +148,11 @@ services:
     restart: unless-stopped
 
   worker:
-    image: eaios-backend:m3
+    image: eaios-backend:m4
     command: ["celery", "-A", "app.tasks.worker:celery_app", "worker", "--concurrency=2", "--loglevel=INFO", "-Q", "default"]
     environment: *backend-env
+    volumes:
+      - ./var/connectors:/run/eaios/connectors:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -161,7 +168,7 @@ services:
     restart: unless-stopped
 
   scheduler:
-    image: eaios-backend:m3
+    image: eaios-backend:m4
     command: ["celery", "-A", "app.tasks.worker:celery_app", "beat", "--loglevel=INFO", "--schedule", "/tmp/celerybeat-schedule"]
     environment: *backend-env
     depends_on:
@@ -182,7 +189,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
-    image: eaios-web:m3
+    image: eaios-web:m4
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -203,7 +210,7 @@ services:
     build:
       context: ./backend
       target: test
-    image: eaios-backend-tests:m3
+    image: eaios-backend-tests:m4
     environment:
       TEST_DATABASE_ADMIN_URL: postgresql+psycopg://postgres:${POSTGRES_SUPERUSER_PASSWORD:?set in .env}@postgres:5432/postgres
       TEST_REDIS_URL: redis://:${REDIS_PASSWORD:?set in .env}@redis:6379/15

@@ -1,0 +1,75 @@
+{
+  "captured_at": "2026-11-21T14:37:34.555635+00:00",
+  "checks": {
+    "audit": [
+      200,
+      [
+        "auth.login",
+        "auth.login",
+        "auth.login",
+        "document.publish",
+        "document.retrieve"
+      ]
+    ],
+    "create_source_without_creds": [
+      422,
+      "drive_not_configured"
+    ],
+    "docs_finance_admin": [
+      200,
+      [
+        "finance"
+      ]
+    ],
+    "finance_answer": [
+      "published",
+      "fake",
+      1
+    ],
+    "iso_report_request": [
+      403,
+      "capability_disabled"
+    ],
+    "iso_settings": [
+      200,
+      [
+        "documents"
+      ],
+      [
+        "upload"
+      ],
+      "nightly"
+    ],
+    "nile_settings": [
+      200,
+      [
+        "documents",
+        "sales_reports"
+      ],
+      [
+        "google_drive",
+        "upload"
+      ],
+      "demo"
+    ],
+    "role_edit_self_lockout": [
+      422,
+      "cannot_remove_own_admin"
+    ],
+    "users_finance_admin": [
+      200,
+      [
+        "finance"
+      ]
+    ],
+    "users_reader": 403,
+    "users_tenant_admin": [
+      200,
+      7
+    ]
+  },
+  "drive_credentials": "none configured (no live Drive)",
+  "inference": "FAKE (labelled on every event; not model evidence)",
+  "migration": "0008_sync_fencing",
+  "stack": "laptop Compose (api, worker, scheduler, PostgreSQL 17.6, Redis, Qdrant, SeaweedFS), Celery dispatch, MODEL_MODE=fake"
+}

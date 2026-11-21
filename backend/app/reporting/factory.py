@@ -7,12 +7,16 @@ requires ``REPORT_DATABASE_URL``: without it, report runs end with
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from sqlalchemy import Engine
 
 from app.config import DocumentStoreKind, Settings
+from app.connectors.drive import ConnectorConfig, DriveClientFactory, http_client_factory
+from app.connectors.sync import DriveSyncService
 from app.documents.answers import DocumentAnswerWorkflow
 from app.documents.ingest import IngestionRunner, collection_name
 from app.documents.qdrant import QdrantClient
@@ -31,6 +35,7 @@ class Components:
     runner: ReportRunner
     ingestion: IngestionRunner
     report_engine: Engine | None
+    drive_sync: DriveSyncService | None = None
 
     def close(self) -> None:
         self.qdrant.close()
@@ -55,6 +60,8 @@ def build_components(
     model: ModelClient | None = None,
     objects: ObjectStore | None = None,
     qdrant: QdrantClient | None = None,
+    drive_clients: DriveClientFactory | None = None,
+    ingest_dispatch: Callable[[UUID, UUID], None] | None = None,
 ) -> Components:
     model = model or build_model_client(settings)
     objects = objects or build_object_store(settings)
@@ -79,7 +86,20 @@ def build_components(
     )
     runner = ReportRunner(app_engine, ReportWorkflow(deps), settings, documents)
     ingestion = IngestionRunner(app_engine, settings, objects, qdrant, model)
-    return Components(model, objects, qdrant, runner, ingestion, report_engine)
+    connector_config = ConnectorConfig(settings.drive_connector_config)
+    clients = drive_clients or http_client_factory(connector_config)
+    drive_sync = DriveSyncService(
+        app_engine,
+        settings,
+        objects,
+        qdrant,
+        model,
+        clients,
+        ingest_dispatch,
+        lease_seconds=settings.drive_sync_lease_seconds,
+        roots=connector_config.allowed_roots,
+    )
+    return Components(model, objects, qdrant, runner, ingestion, report_engine, drive_sync)
 
 
 def build_runner(

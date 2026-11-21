@@ -149,7 +149,7 @@ def create_document(
     storage_key_for: Any,
     permissions: Permissions | None,
     unknown_department: str,
-    created_by: UUID,
+    created_by: UUID | None,
     source: str = "upload",
     document_id: UUID | None = None,
 ) -> tuple[UUID, UUID, str]:
@@ -217,7 +217,7 @@ def _insert_version(
     byte_size: int,
     byte_sha256: str,
     key: str,
-    created_by: UUID,
+    created_by: UUID | None,
 ) -> None:
     conn.execute(
         text(
@@ -251,7 +251,7 @@ def add_version(
     byte_size: int,
     byte_sha256: str,
     storage_key_for: Any,
-    created_by: UUID,
+    created_by: UUID | None,
 ) -> tuple[int, UUID, str]:
     row = conn.execute(
         text(

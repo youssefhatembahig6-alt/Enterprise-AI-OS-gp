@@ -1,5 +1,7 @@
 import { Alert, Button, Card, Field, StatusPill, type StatusTone } from "@eaios/ui";
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { admin, type TenantSettings } from "./admin";
+import { AdminPanel } from "./AdminPanel";
 import { api, ApiError, type Identity } from "./api";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { ReportPanel } from "./ReportPanel";
@@ -174,6 +176,15 @@ export function App() {
   const status = useApiStatus();
   const [session, setSession] = useState<Session | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [settings, setSettings] = useState<TenantSettings | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      setSettings(null);
+      return;
+    }
+    admin.tenantSettings(session.token).then(setSettings, () => setSettings(null));
+  }, [session]);
 
   const signOut = useCallback(async () => {
     const current = session;
@@ -198,10 +209,19 @@ export function App() {
       {notice && !session ? <p className="text-sm text-muted-fg">{notice}</p> : null}
       {session ? (
         <>
-          <ReportPanel token={session.token} />
+          <ReportPanel token={session.token} packs={settings?.enabled_packs ?? null} />
           <DocumentsPanel
             token={session.token}
-            canUpload={session.identity.capabilities.some((c) => c.capability === "resource.admin")}
+            canUpload={
+              session.identity.capabilities.some((c) => c.capability === "resource.admin") &&
+              Boolean(settings?.enabled_connectors.includes("upload"))
+            }
+          />
+          <AdminPanel
+            token={session.token}
+            identity={session.identity}
+            settings={settings}
+            onSettings={setSettings}
           />
           <IdentityView session={session} onSignOut={() => void signOut()} />
         </>

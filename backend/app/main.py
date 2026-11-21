@@ -10,9 +10,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from redis import Redis
 
-from app.api import auth, documents, health, reports
+from app.admin.service import AdminService
+from app.api import admin, auth, documents, health, reports
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
+from app.connectors.drive import ConnectorConfig, DriveClientFactory, http_client_factory
+from app.connectors.sync import DriveSyncService, SyncOutcome
 from app.db.engine import create_app_engine
 from app.documents import store as doc_store
 from app.documents.ingest import DocumentService
@@ -27,8 +30,13 @@ from app.services.health import ReadinessChecker
 from app.services.identity import IdentityService
 
 
-def create_app(settings: Settings | None = None, model: ModelClient | None = None) -> FastAPI:  # noqa: PLR0915
-    """Build the API. ``model`` overrides the model client (tests inject doubles)."""
+def create_app(  # noqa: PLR0915
+    settings: Settings | None = None,
+    model: ModelClient | None = None,
+    drive_clients: DriveClientFactory | None = None,
+) -> FastAPI:
+    """Build the API. ``model`` and ``drive_clients`` override the model client and the
+    Google Drive client factory (tests inject doubles)."""
 
     settings = settings or get_settings()
     configure_logging()
@@ -76,11 +84,12 @@ def create_app(settings: Settings | None = None, model: ModelClient | None = Non
 
     app = FastAPI(
         title="Enterprise AI OS API",
-        version="0.3.0-m3",
+        version="0.4.0-m4",
         description=(
             "Identity, tenant isolation and health (M0); verified SQL reports (M2) and "
             "authorized document answers with exact citations (M3), streamed over "
-            "Server-Sent Events."
+            "Server-Sent Events; Google Drive sync, scoped administration and tenant "
+            "configuration (M4)."
         ),
         lifespan=lifespan,
     )
@@ -115,6 +124,40 @@ def create_app(settings: Settings | None = None, model: ModelClient | None = Non
         model_client,
         ingest_dispatcher.dispatch if ingest_dispatcher else None,
     )
+    # M4: Drive sync. Inline dispatch runs a manual sync in the request (tests and
+    # single-process development); Celery queues it for the worker.
+    drive_config = ConnectorConfig(settings.drive_connector_config)
+    drive_sync = DriveSyncService(
+        engine,
+        settings,
+        objects,
+        qdrant,
+        model_client,
+        drive_clients or http_client_factory(drive_config),
+        ingest_dispatcher.dispatch if ingest_dispatcher else None,
+        lease_seconds=settings.drive_sync_lease_seconds,
+        roots=drive_config.allowed_roots,
+    )
+    app.state.drive_sync = drive_sync
+
+    def run_sync(
+        tenant_id: uuid.UUID, source_id: uuid.UUID, user_id: uuid.UUID, run_id: uuid.UUID
+    ) -> SyncOutcome | None:
+        if settings.report_dispatch.value == "inline":
+            return drive_sync.sync(
+                tenant_id, source_id, trigger="manual", requested_by=user_id, run_id=run_id
+            )
+        from app.tasks.worker import celery_app  # noqa: PLC0415
+
+        celery_app.conf.broker_url = settings.redis_url.get_secret_value()
+        celery_app.send_task(
+            "app.tasks.connectors.sync_source",
+            args=[str(source_id), str(tenant_id), "manual", str(user_id), str(run_id)],
+            queue="default",
+        )
+        return None
+
+    app.state.admin = AdminService(engine, drive_config, run_sync)
     app.state.readiness = ReadinessChecker(
         engine=engine,
         redis=redis,
@@ -152,4 +195,5 @@ def create_app(settings: Settings | None = None, model: ModelClient | None = Non
     app.include_router(auth.router)
     app.include_router(reports.router)
     app.include_router(documents.router)
+    app.include_router(admin.router)
     return app

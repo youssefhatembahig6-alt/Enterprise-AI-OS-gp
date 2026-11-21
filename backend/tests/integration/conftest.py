@@ -88,8 +88,9 @@ def test_db() -> Iterator[DbHarness]:
 
 
 @contextmanager
-def disposable_database(*, seed: bool = True) -> Iterator[DbHarness]:
-    """Create a fresh database plus owner/app roles, migrate it, optionally seed M0."""
+def disposable_database(*, seed: bool = True, revision: str = "head") -> Iterator[DbHarness]:
+    """Create a fresh database plus owner/app roles, migrate it (to ``revision``),
+    optionally seed M0. ``migrate(db, "head")`` continues an older database."""
 
     assert ADMIN_URL
     suffix = uuid.uuid4().hex[:10]
@@ -134,19 +135,7 @@ def disposable_database(*, seed: bool = True) -> Iterator[DbHarness]:
     app_url = _with_credentials(ADMIN_URL, app_role, app_pw, name)
     report_url = _with_credentials(ADMIN_URL, report_role, report_pw, name)
 
-    role_env = {"EAIOS_APP_DB_ROLE": app_role, "EAIOS_REPORT_DB_ROLE": report_role}
-    previous = {key: os.environ.get(key) for key in role_env}
-    os.environ.update(role_env)
-    try:
-        config = Config("alembic.ini")
-        config.attributes["url"] = owner_url
-        command.upgrade(config, "head")
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+    _upgrade(owner_url, app_role, report_role, revision)
 
     owner_engine = create_engine(owner_url, poolclass=pool.NullPool)
     foundation = load_foundation()
@@ -177,6 +166,28 @@ def disposable_database(*, seed: bool = True) -> Iterator[DbHarness]:
             conn.exec_driver_sql(f"DROP ROLE IF EXISTS {report_role}")
             conn.exec_driver_sql(f"DROP ROLE IF EXISTS {owner_role}")
         admin.dispose()
+
+
+def _upgrade(owner_url: str, app_role: str, report_role: str, revision: str) -> None:
+    role_env = {"EAIOS_APP_DB_ROLE": app_role, "EAIOS_REPORT_DB_ROLE": report_role}
+    previous = {key: os.environ.get(key) for key in role_env}
+    os.environ.update(role_env)
+    try:
+        config = Config("alembic.ini")
+        config.attributes["url"] = owner_url
+        command.upgrade(config, revision)
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def migrate(db: DbHarness, revision: str = "head") -> None:
+    """Upgrade an existing disposable database (upgrade tests)."""
+
+    _upgrade(db.owner_url, db.app_role, db.report_role, revision)
 
 
 def _admin_creds() -> tuple[str, str]:
@@ -271,6 +282,22 @@ def owner_exec(test_db: DbHarness, sql: str, params: dict[str, Any] | None = Non
         # Buffer rows before the connection closes: fetching afterwards reads freed
         # driver state (psycopg crashes when loading arrays such as rolconfig).
         return result.freeze()() if result.returns_rows else result
+
+
+@contextmanager
+def tenant_packs(test_db: DbHarness, slug: str, packs: list[str]) -> Iterator[None]:
+    """Temporarily switch a fixture tenant's enabled packs (M4 tenant configuration)."""
+
+    tenant_id = test_db.foundation.tenants[slug].id
+    before = owner_exec(
+        test_db, "SELECT enabled_packs FROM tenant_settings WHERE tenant_id = :t", {"t": tenant_id}
+    ).scalar_one()
+    sql = "UPDATE tenant_settings SET enabled_packs = :p WHERE tenant_id = :t"
+    owner_exec(test_db, sql, {"p": packs, "t": tenant_id})
+    try:
+        yield
+    finally:
+        owner_exec(test_db, sql, {"p": list(before), "t": tenant_id})
 
 
 # --- M2 report fixtures ---------------------------------------------------------------

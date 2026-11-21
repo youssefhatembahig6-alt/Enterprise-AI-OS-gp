@@ -3,7 +3,9 @@
 # tenant-specific branches. No passwords are stored here: the explicit dev seed
 # generates them and writes them to a git-ignored, owner-only file.
 #
-# Capabilities used:  resource.read, resource.admin, dataset.query (see app/security/policy.py)
+# Capabilities used:  resource.read, resource.admin, dataset.query, identity.admin, audit.read,
+#                     tenant.config (see app/security/policy.py)
+# Tenant settings:    enabled packs/connectors and sync mode (app/tenancy/config.py, M4)
 # Resource kinds:     document (default), dataset (M2 report sources)
 # Grant actions:      resource.read (default), dataset.query
 # Attributes used:    clearance (public < internal < confidential < restricted),
@@ -15,6 +17,12 @@ version = 1
 slug = "niletech"
 name = "NileTech Solutions"
 
+  # M4 tenant configuration: both packs, upload and Google Drive, 15-minute demo sync.
+  [tenants.settings]
+  enabled_packs = ["documents", "sales_reports"]
+  enabled_connectors = ["upload", "google_drive"]
+  sync_mode = "demo"
+
   [[tenants.roles]]
   key = "reader"
   name = "Reader"
@@ -23,7 +31,7 @@ name = "NileTech Solutions"
   [[tenants.roles]]
   key = "department_admin"
   name = "Department administrator"
-  capabilities = ["resource.admin"]
+  capabilities = ["resource.admin", "identity.admin", "audit.read"]
 
   [[tenants.roles]]
   key = "report_reader"
@@ -33,7 +41,7 @@ name = "NileTech Solutions"
   [[tenants.roles]]
   key = "access_admin"
   name = "Tenant access administrator"
-  capabilities = ["resource.admin"]
+  capabilities = ["resource.admin", "identity.admin", "audit.read", "tenant.config"]
 
   [[tenants.groups]]
   key = "all-staff"
@@ -199,6 +207,13 @@ name = "NileTech Solutions"
 slug = "isolation-test"
 name = "Isolation Test Tenant"
 
+  # M4: a deliberately different configuration — documents only (no sales reports),
+  # upload only (no Google Drive), nightly sync. Same application code.
+  [tenants.settings]
+  enabled_packs = ["documents"]
+  enabled_connectors = ["upload"]
+  sync_mode = "nightly"
+
   [[tenants.roles]]
   key = "reader"
   name = "Reader"
@@ -207,7 +222,7 @@ name = "Isolation Test Tenant"
   [[tenants.roles]]
   key = "department_admin"
   name = "Department administrator"
-  capabilities = ["resource.admin"]
+  capabilities = ["resource.admin", "identity.admin", "audit.read"]
 
   [[tenants.roles]]
   key = "report_reader"

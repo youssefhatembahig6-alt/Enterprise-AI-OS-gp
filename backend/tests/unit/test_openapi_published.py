@@ -43,6 +43,23 @@ def test_published_openapi_matches_app() -> None:
         "/api/v1/documents/{document_id}/versions",
         "/api/v1/documents/{document_id}/reindex",
         "/api/v1/runs/{run_id}/citations/{citation_id}",
+        # M4
+        "/api/v1/tenant/settings",
+        "/api/v1/admin/tenant/settings",
+        "/api/v1/admin/users",
+        "/api/v1/admin/users/{user_id}",
+        "/api/v1/admin/users/{user_id}/roles",
+        "/api/v1/admin/users/{user_id}/groups",
+        "/api/v1/admin/roles",
+        "/api/v1/admin/roles/{role_key}",
+        "/api/v1/admin/groups",
+        "/api/v1/admin/groups/{group_key}/links",
+        "/api/v1/admin/documents",
+        "/api/v1/admin/sources",
+        "/api/v1/admin/sources/{source_id}",
+        "/api/v1/admin/sources/{source_id}/sync",
+        "/api/v1/admin/sources/{source_id}/runs/{run_id}",
+        "/api/v1/admin/audit",
     }
     chat = generated["paths"]["/api/v1/chat"]["post"]["responses"]["200"]["content"]
     assert "text/event-stream" in chat

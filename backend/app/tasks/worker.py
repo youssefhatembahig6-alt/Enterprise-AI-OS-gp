@@ -28,7 +28,12 @@ def _broker_url() -> str | None:
 celery_app = Celery(
     "eaios",
     broker=_broker_url(),
-    include=["app.tasks.worker", "app.tasks.reports", "app.tasks.documents"],
+    include=[
+        "app.tasks.worker",
+        "app.tasks.reports",
+        "app.tasks.documents",
+        "app.tasks.connectors",
+    ],
 )
 celery_app.conf.update(
     task_default_queue="default",
@@ -54,6 +59,12 @@ celery_app.conf.update(
         "dispatch-due-ingestion-jobs": {
             "task": "app.tasks.documents.dispatch_due_ingestion_jobs",
             "schedule": 30.0,
+        },
+        # M4: checks every minute which connector sources are due (15 min in demo
+        # mode, nightly otherwise); the schedule itself lives in tenant_settings.
+        "dispatch-due-connector-syncs": {
+            "task": "app.tasks.connectors.dispatch_due_syncs",
+            "schedule": 60.0,
         },
     },
 )
